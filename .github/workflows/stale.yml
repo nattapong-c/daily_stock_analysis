@@ -16,11 +16,11 @@ permissions:
 
 jobs:
   stale:
-    name: 🧹 清理过期 Issues/PRs
+    name: 🧹 Cleanup Stale Issues/PRs
     runs-on: ubuntu-latest
     
     steps:
-      - name: 🏷️ 标记并关闭过期内容
+      - name: 🏷️ Mark and Close Stale Issues/PRs
         uses: actions/stale@v10
         with:
           # ===== Issue 配置 =====
@@ -28,34 +28,32 @@ jobs:
           days-before-issue-close: 7
           stale-issue-label: 'stale'
           stale-issue-message: |
-            👋 这个 Issue 已经 **7 天** 没有活动了。
+            👋 This issue has been marked as stale because it has been inactive for 7 days.
             
-            如果问题仍然存在，请回复说明最新情况，我们会继续跟进。
-            如果问题已解决或不再需要，可以直接关闭此 Issue。
-            
-            **如果 7 天内没有回复，此 Issue 将自动关闭。**
+            If the problem still exists, please comment to keep it active; otherwise, it will be closed automatically in 7 days.
+            If it is no longer needed, feel free to close it yourself.
           close-issue-message: |
-            🔒 由于长时间没有活动，此 Issue 已自动关闭。
+            🔒 This issue has been automatically closed because it has been inactive for another 7 days.
             
-            如果问题仍然存在，欢迎重新打开或创建新的 Issue。
+            If the issue is still relevant, please reopen it or create a new one.
           
           # ===== PR 配置 =====
           days-before-pr-stale: 21
           days-before-pr-close: 14
           stale-pr-label: 'stale'
           stale-pr-message: |
-            👋 这个 PR 已经 **21 天** 没有活动了。
+            👋 This PR has been marked as stale because it has been inactive for 21 days.
             
-            请检查是否需要：
-            - 解决合并冲突
-            - 回复 review 意见
-            - 更新代码
+            Please check if you need to:
+            - Resolve merge conflicts
+            - Address review comments
+            - Push updates to the branch
             
-            **如果 14 天内没有更新，此 PR 将自动关闭。**
+            **If there is no activity in the next 14 days, this PR will be closed automatically.**
           close-pr-message: |
-            🔒 由于长时间没有活动，此 PR 已自动关闭。
+            🔒 This PR has been automatically closed because it has been inactive for another 14 days.
             
-            如果您仍希望合入这些更改，请重新打开或创建新的 PR。
+            If you still wish to submit these changes, feel free to reopen or create a new PR.
           
           # ===== 排除规则 =====
           # 带有这些标签的不会被标记为 stale
