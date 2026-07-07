@@ -172,30 +172,31 @@ def _today_looks_complete_daily_bar(
     return True
 
 
-def _phase_aware_quote_labels(context: Dict[str, Any]) -> Tuple[str, str]:
-    """Choose Chinese quote-table labels that do not conflict with phase context."""
+def _phase_aware_quote_labels(context: Dict[str, Any], report_language: str = "zh") -> Tuple[str, str]:
+    """Choose Chinese or English quote-table labels that do not conflict with phase context."""
     phase_context = context.get("market_phase_context")
+    lang = "en" if str(report_language or "").lower() in {"en", "ko"} else "zh"
     if not isinstance(phase_context, dict):
-        return "今日行情", "收盘价"
+        return ("Today's Quotes", "Close") if lang == "en" else ("今日行情", "收盘价")
 
     phase = str(phase_context.get("phase") or "").strip()
     if phase in {"premarket", "non_trading"}:
         today = context.get("today")
         if _today_looks_complete_daily_bar(context, phase_context):
-            return "上一完整交易日行情", "上一完整交易日收盘价"
+            return ("Last Session Quotes", "Last Close") if lang == "en" else ("上一完整交易日行情", "上一完整交易日收盘价")
         if _today_has_realtime_overlay(today):
-            return "最新行情", "实时估算价"
+            return ("Latest Quotes", "Est. Realtime Price") if lang == "en" else ("最新行情", "实时估算价")
         if isinstance(today, dict) and today.get("close") not in (None, ""):
-            return "最新行情", "最新价"
-        return "今日行情", "收盘价"
+            return ("Latest Quotes", "Latest Price") if lang == "en" else ("最新行情", "最新价")
+        return ("Today's Quotes", "Close") if lang == "en" else ("今日行情", "收盘价")
 
     if (
         phase in {"intraday", "lunch_break", "closing_auction"}
         and phase_context.get("is_partial_bar") is True
     ):
-        return "最新行情", "盘中估算价"
+        return ("Latest Quotes", "Est. Intraday Price") if lang == "en" else ("最新行情", "盘中估算价")
 
-    return "今日行情", "收盘价"
+    return ("Today's Quotes", "Close") if lang == "en" else ("今日行情", "收盘价")
 
 
 def _should_hide_regular_session_ohlc(context: Dict[str, Any]) -> bool:
@@ -3516,19 +3517,30 @@ class GeminiAnalyzer:
             if backend_id in LOCAL_CLI_GENERATION_BACKEND_IDS:
                 model_name = backend_id
                 legacy_audit_context["transport"] = backend_id
-            logger.info(f"========== AI 分析 {name}({code}) ==========")
-            logger.info(f"[LLM配置] 模型: {model_name}")
-            logger.info(f"[LLM配置] Prompt 长度: {len(prompt)} 字符")
-            logger.info(f"[LLM配置] 是否包含新闻: {'是' if news_context else '否'}")
+            if report_language in ("en", "ko"):
+                logger.info(f"========== AI Analysis {name}({code}) ==========")
+                logger.info(f"[LLM Config] Model: {model_name}")
+                logger.info(f"[LLM Config] Prompt Length: {len(prompt)} chars")
+                logger.info(f"[LLM Config] Contains News: {'Yes' if news_context else 'No'}")
+            else:
+                logger.info(f"========== AI 分析 {name}({code}) ==========")
+                logger.info(f"[LLM配置] 模型: {model_name}")
+                logger.info(f"[LLM配置] Prompt 长度: {len(prompt)} 字符")
+                logger.info(f"[LLM配置] 是否包含新闻: {'是' if news_context else '否'}")
 
             # 本地 CLI backend 是进程执行能力，不记录完整 prompt。
             if backend_id in LOCAL_CLI_GENERATION_BACKEND_IDS:
                 prompt_preview = redact_diagnostic_text(prompt, limit=500)
             else:
                 prompt_preview = prompt[:500] + "..." if len(prompt) > 500 else prompt
-            logger.info(f"[LLM Prompt 预览]\n{prompt_preview}")
-            if backend_id not in LOCAL_CLI_GENERATION_BACKEND_IDS:
-                logger.debug(f"=== 完整 Prompt ({len(prompt)}字符) ===\n{prompt}\n=== End Prompt ===")
+            if report_language in ("en", "ko"):
+                logger.info(f"[LLM Prompt Preview]\n{prompt_preview}")
+                if backend_id not in LOCAL_CLI_GENERATION_BACKEND_IDS:
+                    logger.debug(f"=== Full Prompt ({len(prompt)} chars) ===\n{prompt}\n=== End Prompt ===")
+            else:
+                logger.info(f"[LLM Prompt 预览]\n{prompt_preview}")
+                if backend_id not in LOCAL_CLI_GENERATION_BACKEND_IDS:
+                    logger.debug(f"=== 完整 Prompt ({len(prompt)}字符) ===\n{prompt}\n=== End Prompt ===")
 
             # 设置生成配置
             generation_config = {
@@ -3536,8 +3548,12 @@ class GeminiAnalyzer:
                 "max_output_tokens": 8192,
             }
 
-            logger.info(f"[LLM调用] 开始调用 {model_name}...")
-            _emit_progress(68, f"{name}：LLM 已接收请求，等待响应")
+            if report_language in ("en", "ko"):
+                logger.info(f"[LLM Call] Calling {model_name}...")
+                _emit_progress(68, f"{name}: LLM request sent, waiting for response")
+            else:
+                logger.info(f"[LLM调用] 开始调用 {model_name}...")
+                _emit_progress(68, f"{name}：LLM 已接收请求，等待响应")
 
             # 使用 litellm 调用（支持完整性校验重试）
             current_prompt = prompt
@@ -3571,21 +3587,36 @@ class GeminiAnalyzer:
                 elapsed = time.time() - start_time
 
                 # 记录响应信息
-                logger.info(
-                    f"[LLM返回] {model_name} 响应成功, 耗时 {elapsed:.2f}s, 响应长度 {len(response_text)} 字符"
-                )
+                if report_language in ("en", "ko"):
+                    logger.info(
+                        f"[LLM Response] {model_name} response received, elapsed {elapsed:.2f}s, response length {len(response_text)} chars"
+                    )
+                else:
+                    logger.info(
+                        f"[LLM返回] {model_name} 响应成功, 耗时 {elapsed:.2f}s, 响应长度 {len(response_text)} 字符"
+                    )
                 if backend_id in LOCAL_CLI_GENERATION_BACKEND_IDS:
                     response_preview = redact_diagnostic_text(response_text, limit=300)
                 else:
                     response_preview = response_text[:300] + "..." if len(response_text) > 300 else response_text
-                logger.info(f"[LLM返回 预览]\n{response_preview}")
-                if backend_id not in LOCAL_CLI_GENERATION_BACKEND_IDS:
-                    logger.debug(
-                        f"=== {model_name} 完整响应 ({len(response_text)}字符) ===\n{response_text}\n=== End Response ==="
-                    )
+                if report_language in ("en", "ko"):
+                    logger.info(f"[LLM Response Preview]\n{response_preview}")
+                    if backend_id not in LOCAL_CLI_GENERATION_BACKEND_IDS:
+                        logger.debug(
+                            f"=== {model_name} Full Response ({len(response_text)} chars) ===\n{response_text}\n=== End Response ==="
+                        )
+                else:
+                    logger.info(f"[LLM返回 预览]\n{response_preview}")
+                    if backend_id not in LOCAL_CLI_GENERATION_BACKEND_IDS:
+                        logger.debug(
+                            f"=== {model_name} 完整响应 ({len(response_text)}字符) ===\n{response_text}\n=== End Response ==="
+                        )
                 # Keep parser/retry progress monotonic so task progress/message never "goes backward".
                 parse_progress = min(99, 93 + retry_count * 2)
-                _emit_progress(parse_progress, f"{name}：LLM 返回完成，正在解析 JSON")
+                if report_language in ("en", "ko"):
+                    _emit_progress(parse_progress, f"{name}: LLM response received, parsing JSON")
+                else:
+                    _emit_progress(parse_progress, f"{name}：LLM 返回完成，正在解析 JSON")
 
                 # 解析响应
                 result = self._parse_response(response_text, code, name)
@@ -3614,34 +3645,59 @@ class GeminiAnalyzer:
                         report_language=report_language,
                     )
                     retry_count += 1
-                    logger.info(
-                        "[LLM完整性] 必填字段缺失 %s，第 %d 次补全重试",
-                        missing_fields,
-                        retry_count,
-                    )
+                    if report_language in ("en", "ko"):
+                        logger.info(
+                            "[LLM Integrity] Missing required fields %s, retrying completion (attempt %d)",
+                            missing_fields,
+                            retry_count,
+                        )
+                    else:
+                        logger.info(
+                            "[LLM完整性] 必填字段缺失 %s，第 %d 次补全重试",
+                            missing_fields,
+                            retry_count,
+                        )
                     retry_progress = min(99, 92 + retry_count * 2)
-                    _emit_progress(
-                        retry_progress,
-                        f"{name}：报告字段不完整，正在补全重试（{retry_count}/{max_retries}）",
-                    )
+                    if report_language in ("en", "ko"):
+                        _emit_progress(
+                            retry_progress,
+                            f"{name}: Report incomplete, retrying completion ({retry_count}/{max_retries})",
+                        )
+                    else:
+                        _emit_progress(
+                            retry_progress,
+                            f"{name}：报告字段不完整，正在补全重试（{retry_count}/{max_retries}）",
+                        )
                 else:
                     self._apply_placeholder_fill(result, missing_fields)
-                    logger.warning(
-                        "[LLM完整性] 必填字段缺失 %s，已占位补全，不阻塞流程",
-                        missing_fields,
-                    )
+                    if report_language in ("en", "ko"):
+                        logger.warning(
+                            "[LLM Integrity] Missing required fields %s, filled with placeholders, continuing workflow",
+                            missing_fields,
+                        )
+                    else:
+                        logger.warning(
+                            "[LLM完整性] 必填字段缺失 %s，已占位补全，不阻塞流程",
+                            missing_fields,
+                        )
                     break
 
             if should_persist_usage_telemetry(llm_usage):
                 persist_llm_usage(llm_usage, model_used, call_type="analysis", stock_code=code)
 
-            logger.info(f"[LLM解析] {name}({code}) 分析完成: {result.trend_prediction}, 评分 {result.sentiment_score}")
+            if report_language in ("en", "ko"):
+                logger.info(f"[LLM Parse] {name}({code}) analysis completed: {result.trend_prediction}, score {result.sentiment_score}")
+            else:
+                logger.info(f"[LLM解析] {name}({code}) 分析完成: {result.trend_prediction}, 评分 {result.sentiment_score}")
 
             return result
             
         except Exception as e:
             safe_error = self._sanitize_hermes_exception_text(e)
-            logger.error("AI 分析 %s(%s) 失败: %s", name, code, safe_error)
+            if report_language in ("en", "ko"):
+                logger.error("AI Analysis for %s(%s) failed: %s", name, code, safe_error)
+            else:
+                logger.error("AI 分析 %s(%s) 失败: %s", name, code, safe_error)
             return AnalysisResult(
                 code=code,
                 name=name,
@@ -3697,21 +3753,36 @@ class GeminiAnalyzer:
         today = context.get('today', {})
         unknown_text = get_unknown_text(report_language)
         no_data_text = get_no_data_text(report_language)
-        quote_section_title, close_price_label = _phase_aware_quote_labels(context)
+        quote_section_title, close_price_label = _phase_aware_quote_labels(context, report_language)
         hide_regular_session_ohlc = _should_hide_regular_session_ohlc(context)
         realtime_overlay_quote = hide_regular_session_ohlc and _today_has_realtime_overlay(today)
-        pct_chg_label = "实时涨跌幅" if realtime_overlay_quote else "涨跌幅"
-        volume_label = "实时成交量" if realtime_overlay_quote else "成交量"
-        amount_label = "实时成交额" if realtime_overlay_quote else "成交额"
+
+        if report_language in ("en", "ko"):
+            pct_chg_label = "Realtime Change %" if realtime_overlay_quote else "Change %"
+            volume_label = "Realtime Volume" if realtime_overlay_quote else "Volume"
+            amount_label = "Realtime Turnover" if realtime_overlay_quote else "Turnover"
+            unit = ""
+            open_label = "Open"
+            high_label = "High"
+            low_label = "Low"
+        else:
+            pct_chg_label = "实时涨跌幅" if realtime_overlay_quote else "涨跌幅"
+            volume_label = "实时成交量" if realtime_overlay_quote else "成交量"
+            amount_label = "实时成交额" if realtime_overlay_quote else "成交额"
+            unit = " 元"
+            open_label = "开盘价"
+            high_label = "最高价"
+            low_label = "最低价"
+
         quote_rows = [
-            f"| {close_price_label} | {today.get('close', 'N/A')} 元 |",
+            f"| {close_price_label} | {today.get('close', 'N/A')}{unit} |",
         ]
         if not hide_regular_session_ohlc:
             quote_rows.extend(
                 [
-                    f"| 开盘价 | {today.get('open', 'N/A')} 元 |",
-                    f"| 最高价 | {today.get('high', 'N/A')} 元 |",
-                    f"| 最低价 | {today.get('low', 'N/A')} 元 |",
+                    f"| {open_label} | {today.get('open', 'N/A')}{unit} |",
+                    f"| {high_label} | {today.get('high', 'N/A')}{unit} |",
+                    f"| {low_label} | {today.get('low', 'N/A')}{unit} |",
                 ]
             )
         quote_rows.extend(
@@ -3723,8 +3794,21 @@ class GeminiAnalyzer:
         )
         quote_rows_text = "\n".join(quote_rows)
         
-        # ========== 构建决策仪表盘格式的输入 ==========
-        prompt = f"""# 决策仪表盘分析请求
+        # ========== 构建决策仪表盘格式 of 输入 ==========
+        if report_language in ("en", "ko"):
+            prompt = f"""# Decision Dashboard Analysis Request
+
+## 📊 Stock Basic Info
+| Item | Data |
+|------|------|
+| Stock Code | **{code}** |
+| Stock Name | **{stock_name}** |
+| Analysis Date | {context.get('date', unknown_text)} |
+
+---
+"""
+        else:
+            prompt = f"""# 决策仪表盘分析请求
 
 ## 📊 股票基础信息
 | 项目 | 数据 |
@@ -3747,7 +3831,27 @@ class GeminiAnalyzer:
             prompt += daily_market_context_section
         if isinstance(analysis_context_pack_summary, str) and analysis_context_pack_summary:
             prompt += analysis_context_pack_summary
-        prompt += f"""
+
+        if report_language in ("en", "ko"):
+            prompt += f"""
+
+## 📈 Technical Data
+
+### {quote_section_title}
+| Indicator | Value |
+|------|------|
+{quote_rows_text}
+
+### Moving Average System (Key Indicators)
+| MA | Value | Description |
+|------|------|------|
+| MA5 | {today.get('ma5', 'N/A')} | Short-term trend line |
+| MA10 | {today.get('ma10', 'N/A')} | Mid-to-short-term trend line |
+| MA20 | {today.get('ma20', 'N/A')} | Mid-term trend line |
+| MA Pattern | {context.get('ma_status', unknown_text)} | Bullish/Bearish/Entangled |
+"""
+        else:
+            prompt += f"""
 
 ## 📈 技术面数据
 
@@ -3768,7 +3872,22 @@ class GeminiAnalyzer:
         # 添加实时行情数据（量比、换手率等）
         if 'realtime' in context:
             rt = context['realtime']
-            prompt += f"""
+            if report_language in ("en", "ko"):
+                prompt += f"""
+### Realtime Enhancement Data
+| Metric | Value | Interpretation |
+|------|------|------|
+| Current Price | {rt.get('price', 'N/A')} | |
+| **Volume Ratio** | **{rt.get('volume_ratio', 'N/A')}** | {rt.get('volume_ratio_desc', '')} |
+| **Turnover Rate** | **{rt.get('turnover_rate', 'N/A')}%** | |
+| PE (Dynamic) | {rt.get('pe_ratio', 'N/A')} | |
+| PB | {rt.get('pb_ratio', 'N/A')} | |
+| Total Market Cap | {self._format_amount(rt.get('total_mv'))} | |
+| Circulating Market Cap | {self._format_amount(rt.get('circ_mv'))} | |
+| 60-Day Change % | {rt.get('change_60d', 'N/A')}% | Mid-term performance |
+"""
+            else:
+                prompt += f"""
 ### 实时行情增强数据
 | 指标 | 数值 | 解读 |
 |------|------|------|
@@ -3811,7 +3930,24 @@ class GeminiAnalyzer:
             ttm_cash = dividend_metrics.get("ttm_cash_dividend_per_share", "N/A")
             ttm_count = dividend_metrics.get("ttm_event_count", "N/A")
             report_date = financial_report.get("report_date", "N/A")
-            prompt += f"""
+            if report_language in ("en", "ko"):
+                prompt += f"""
+### Financials & Dividends (Value Investing Perspective)
+| Metric | Value | Description |
+|------|------|------|
+| Latest Report Date | {report_date} | From structured financial fields |
+| Revenue | {financial_report.get('revenue', 'N/A')} | |
+| Net Profit to Parent | {financial_report.get('net_profit_parent', 'N/A')} | |
+| Operating Cash Flow | {financial_report.get('operating_cash_flow', 'N/A')} | |
+| ROE | {financial_report.get('roe', 'N/A')} | |
+| TTM Cash Dividend / Share | {ttm_cash} | Cash dividends only, pre-tax |
+| TTM Dividend Yield | {ttm_yield} | Formula: TTM Cash Dividend / Current Price × 100% |
+| TTM Dividend Events | {ttm_count} | |
+
+> If the above fields are N/A or missing, write "Data unavailable" explicitly. Do NOT fabricate values.
+"""
+            else:
+                prompt += f"""
 ### 财报与分红（价值投资口径）
 | 指标 | 数值 | 说明 |
 |------|------|------|
@@ -3867,7 +4003,21 @@ class GeminiAnalyzer:
                 for item in bottom_sectors[:3]
                 if isinstance(item, dict) and str(item.get("name", "")).strip()
             ) or "N/A"
-            prompt += f"""
+            if report_language in ("en", "ko"):
+                prompt += f"""
+### Large-Scale Capital Flow (Action Filter)
+| Metric | Value | Decision Context |
+|------|------|----------|
+| Main Net Inflow | {stock_flow.get('main_net_inflow', 'N/A')} | Positive supports price, negative weighs down |
+| 5-Day Net Inflow | {stock_flow.get('inflow_5d', 'N/A')} | For checking persistence of capital flow |
+| 10-Day Net Inflow | {stock_flow.get('inflow_10d', 'N/A')} | For checking persistence of capital flow |
+| Sectors with Top Inflows | {top_sector_text} | Sector resonance context |
+| Sectors with Top Outflows | {bottom_sector_text} | Sector risk context |
+
+> Capital flow is a filter: do not buy when approaching resistance with outflows; when approaching support with no heavy-volume breakdown, hold, watch or observe consolidation.
+"""
+            else:
+                prompt += f"""
 ### 主力资金流向（操作建议过滤器）
 | 指标 | 数值 | 决策含义 |
 |------|------|----------|
@@ -3901,7 +4051,21 @@ class GeminiAnalyzer:
                 for key in ("foreign_net", "trust_net", "dealer_net", "total_net")
             )
         ):
-            prompt += f"""
+            if report_language in ("en", "ko"):
+                prompt += f"""
+### Institutional Flows (3 Majors, Net Buy/Sell, unit: shares)
+| Institution | Net Buy/Sell | Decision Context |
+|------|------|----------|
+| Foreign | {institution_data.get('foreign_net', 'N/A')} | Positive supports price, negative weighs down |
+| Inv. Trust | {institution_data.get('trust_net', 'N/A')} | Persistent Inv. Trust buying implies mid-term bullish intent |
+| Dealer | {institution_data.get('dealer_net', 'N/A')} | Short-term hedging / dealer direction context |
+| Total (3 Majors) | {institution_data.get('total_net', 'N/A')} | Most watched flow signal in Taiwan stock market |
+| Data Date | {institution_data.get('date', 'N/A')} | Source: {institution_data.get('source', 'N/A')} |
+
+> The 3 Majors are key flow indicators in Taiwan stock market: foreign and trust net buying/selling together supports/weighs down the price.
+"""
+            else:
+                prompt += f"""
 ### 三大法人动向（台股筹码过滤器，净买卖超，单位:股）
 | 法人 | 净买卖超 | 决策含义 |
 |------|------|----------|
@@ -3918,7 +4082,19 @@ class GeminiAnalyzer:
         if 'chip' in context:
             chip = context['chip']
             profit_ratio = chip.get('profit_ratio', 0)
-            prompt += f"""
+            if report_language in ("en", "ko"):
+                prompt += f"""
+### Chip Distribution Data (Efficiency)
+| Metric | Value | Healthy Standard |
+|------|------|----------|
+| **Profit Ratio** | **{profit_ratio:.1%}** | Warning at 70-90% |
+| Average Cost | {chip.get('avg_cost', 'N/A')} | Current price should be 5-15% above |
+| 90% Chip Concentration | {chip.get('concentration_90', 0):.2%} | <15% is concentrated |
+| 70% Chip Concentration | {chip.get('concentration_70', 0):.2%} | |
+| Chip Status | {chip.get('chip_status', unknown_text)} | |
+"""
+            else:
+                prompt += f"""
 ### 筹码分布数据（效率指标）
 | 指标 | 数值 | 健康标准 |
 |------|------|----------|
@@ -3950,8 +4126,37 @@ class GeminiAnalyzer:
             )
             consistency_notes = trend.get('prompt_consistency_notes', [])
             if use_legacy_default_prompt:
-                bias_warning = "🚨 超过5%，严禁追高！" if trend.get('bias_ma5', 0) > 5 else "✅ 安全范围"
-                prompt += f"""
+                if report_language in ("en", "ko"):
+                    bias_warning = "🚨 Exceeds 5%, strictly do not chase!" if trend.get('bias_ma5', 0) > 5 else "✅ Safe Range"
+                    prompt += f"""
+### Trend Analysis (Trading Concepts)
+| Metric | Value | Judgment |
+|------|------|------|
+| Trend Status | {trend.get('trend_status', unknown_text)} | |
+| MA Alignment | {trend.get('ma_alignment', unknown_text)} | MA5>MA10>MA20 is bullish |
+| Trend Strength | {trend.get('trend_strength', 0)}/100 | |
+| **Bias (MA5)** | **{trend.get('bias_ma5', 0):+.2f}%** | {bias_warning} |
+| Bias (MA10) | {trend.get('bias_ma10', 0):+.2f}% | |
+| Volume Status | {trend.get('volume_status', unknown_text)} | {trend.get('volume_trend', '')} |
+| System Signal | {trend.get('buy_signal', unknown_text)} | |
+| System Score | {trend.get('signal_score', 0)}/100 | |
+
+#### System Reasons
+**Supporting Reasons**:
+{chr(10).join('- ' + r for r in trend.get('signal_reasons', ['None'])) if trend.get('signal_reasons') else '- None'}
+
+**Risk Factors**:
+{chr(10).join('- ' + r for r in trend.get('risk_factors', ['None'])) if trend.get('risk_factors') else '- None'}
+"""
+                    if consistency_notes:
+                        prompt += f"""
+
+**Consistency Constraints**:
+{chr(10).join('- ' + note for note in consistency_notes)}
+"""
+                else:
+                    bias_warning = "🚨 超过5%，严禁追高！" if trend.get('bias_ma5', 0) > 5 else "✅ 安全范围"
+                    prompt += f"""
 ### 趋势分析预判（基于交易理念）
 | 指标 | 数值 | 判定 |
 |------|------|------|
@@ -3971,19 +4176,52 @@ class GeminiAnalyzer:
 **风险因素**：
 {chr(10).join('- ' + r for r in trend.get('risk_factors', ['无'])) if trend.get('risk_factors') else '- 无'}
 """
-                if consistency_notes:
-                    prompt += f"""
+                    if consistency_notes:
+                        prompt += f"""
 
 **一致性约束**：
 {chr(10).join('- ' + note for note in consistency_notes)}
 """
             else:
-                bias_warning = (
-                    "🚨 偏离较大，需谨慎评估追高风险"
-                    if trend.get('bias_ma5', 0) > 5
-                    else "✅ 位置相对可控"
-                )
-                prompt += f"""
+                if report_language in ("en", "ko"):
+                    bias_warning = (
+                        "🚨 Large deviation, evaluate chasing risks carefully"
+                        if trend.get('bias_ma5', 0) > 5
+                        else "✅ Position relatively controlled"
+                    )
+                    prompt += f"""
+### Technical & Structural Analysis
+| Metric | Value | Description |
+|------|------|------|
+| Trend Status | {trend.get('trend_status', unknown_text)} | |
+| MA Alignment | {trend.get('ma_alignment', unknown_text)} | Reference alignment structure strength |
+| Trend Strength | {trend.get('trend_strength', 0)}/100 | |
+| **Bias (MA5)** | **{trend.get('bias_ma5', 0):+.2f}%** | {bias_warning} |
+| Bias (MA10) | {trend.get('bias_ma10', 0):+.2f}% | |
+| Volume Status | {trend.get('volume_status', unknown_text)} | {trend.get('volume_trend', '')} |
+| System Signal | {trend.get('buy_signal', unknown_text)} | |
+| System Score | {trend.get('signal_score', 0)}/100 | |
+
+#### System Reasons
+**Supporting Reasons**:
+{chr(10).join('- ' + r for r in trend.get('signal_reasons', ['None'])) if trend.get('signal_reasons') else '- None'}
+
+**Risk Factors**:
+{chr(10).join('- ' + r for r in trend.get('risk_factors', ['None'])) if trend.get('risk_factors') else '- None'}
+"""
+                    if consistency_notes:
+                        prompt += f"""
+
+**Consistency Constraints**:
+{chr(10).join('- ' + note for note in consistency_notes)}
+"""
+                else:
+                    bias_warning = (
+                        "🚨 偏离较大，需谨慎评估追高风险"
+                        if trend.get('bias_ma5', 0) > 5
+                        else "✅ 位置相对可控"
+                    )
+                    prompt += f"""
 ### 技术与结构分析（供激活技能判断参考）
 | 指标 | 数值 | 说明 |
 |------|------|------|
@@ -4003,8 +4241,8 @@ class GeminiAnalyzer:
 **风险因素**：
 {chr(10).join('- ' + r for r in trend.get('risk_factors', ['无'])) if trend.get('risk_factors') else '- 无'}
 """
-                if consistency_notes:
-                    prompt += f"""
+                    if consistency_notes:
+                        prompt += f"""
 
 **一致性约束**：
 {chr(10).join('- ' + note for note in consistency_notes)}
@@ -4013,14 +4251,26 @@ class GeminiAnalyzer:
         # 添加昨日对比数据
         if 'yesterday' in context:
             volume_change = context.get('volume_change_ratio', 'N/A')
-            prompt += f"""
+            if report_language in ("en", "ko"):
+                prompt += f"""
+### Price/Volume Changes
+- Volume Change vs Yesterday: {volume_change}x
+- Price Change vs Yesterday: {context.get('price_change_ratio', 'N/A')}%
+"""
+                parsed_volume_change = _safe_float(volume_change, default=math.nan)
+                if math.isfinite(parsed_volume_change) and parsed_volume_change > 10:
+                    prompt += """
+- ⚠️ Volume Anomaly Alert: volume is 10x larger than yesterday. This might be due to anomalous data or one-off flows, interpret with care.
+"""
+            else:
+                prompt += f"""
 ### 量价变化
 - 成交量较昨日变化：{volume_change}倍
 - 价格较昨日变化：{context.get('price_change_ratio', 'N/A')}%
 """
-            parsed_volume_change = _safe_float(volume_change, default=math.nan)
-            if math.isfinite(parsed_volume_change) and parsed_volume_change > 10:
-                prompt += """
+                parsed_volume_change = _safe_float(volume_change, default=math.nan)
+                if math.isfinite(parsed_volume_change) and parsed_volume_change > 10:
+                    prompt += """
 - ⚠️ 量能异常提示：成交量较昨日放大超过10倍，可能受异常数据或一次性冲量影响，必须降权解读，不能机械视为强确认信号
 """
         
@@ -4041,7 +4291,14 @@ class GeminiAnalyzer:
                 news_max_age_days=getattr(prompt_config, "news_max_age_days", 3),
                 news_strategy_profile=getattr(prompt_config, "news_strategy_profile", "short"),
             )
-        prompt += """
+        if report_language in ("en", "ko"):
+            prompt += """
+---
+
+## 📰 Market Intelligence & Sentiment
+"""
+        else:
+            prompt += """
 ---
 
 ## 📰 舆情情报
