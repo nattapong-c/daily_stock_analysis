@@ -1066,16 +1066,33 @@ class NotificationService(
         watch_conditions = self._phase_decision_list(phase_decision.get("watch_conditions"))
         data_limitations = self._phase_decision_list(phase_decision.get("data_limitations"))
 
-        report_lines.extend([
-            f"### 🛡️ {labels['phase_decision_heading']}",
-            "",
-            f"| {labels['action_window_label']} | {labels['immediate_action_label']} | {labels['next_check_time_label']} |",
-            "|---------|---------|---------|",
-            f"| {phase_decision.get('action_window') or 'N/A'} | "
-            f"{phase_decision.get('immediate_action') or 'N/A'} | "
-            f"{phase_decision.get('next_check_time') or 'N/A'} |",
-            "",
-        ])
+        if getattr(self._config, "report_vertical_tables", False):
+            vertical_lines = []
+            if phase_decision.get('action_window'):
+                vertical_lines.append(f"- **{labels['action_window_label']}**: {phase_decision.get('action_window')}")
+            if phase_decision.get('immediate_action'):
+                vertical_lines.append(f"- **{labels['immediate_action_label']}**: {phase_decision.get('immediate_action')}")
+            if phase_decision.get('next_check_time'):
+                vertical_lines.append(f"- **{labels['next_check_time_label']}**: {phase_decision.get('next_check_time')}")
+
+            if vertical_lines:
+                report_lines.extend([
+                    f"### 🛡️ {labels['phase_decision_heading']}",
+                    "",
+                    *vertical_lines,
+                    "",
+                ])
+        else:
+            report_lines.extend([
+                f"### 🛡️ {labels['phase_decision_heading']}",
+                "",
+                f"| {labels['action_window_label']} | {labels['immediate_action_label']} | {labels['next_check_time_label']} |",
+                "|---------|---------|---------|",
+                f"| {phase_decision.get('action_window') or 'N/A'} | "
+                f"{phase_decision.get('immediate_action') or 'N/A'} | "
+                f"{phase_decision.get('next_check_time') or 'N/A'} |",
+                "",
+            ])
 
         if watch_conditions:
             report_lines.append(f"**{labels['watch_conditions_label']}**:")
@@ -1261,13 +1278,20 @@ class NotificationService(
                 ])
                 # 持仓分类建议
                 if pos_advice:
-                    report_lines.extend([
-                        f"| {labels['position_status_label']} | {labels['action_advice_label']} |",
-                        "|---------|---------|",
-                        f"| 🆕 **{labels['no_position_label']}** | {pos_advice.get('no_position', localize_operation_advice(result.operation_advice, report_language))} |",
-                        f"| 💼 **{labels['has_position_label']}** | {pos_advice.get('has_position', labels['continue_holding'])} |",
-                        "",
-                    ])
+                    if getattr(self._config, "report_vertical_tables", False):
+                        report_lines.extend([
+                            f"- **🆕 {labels['no_position_label']}**: {pos_advice.get('no_position', localize_operation_advice(result.operation_advice, report_language))}",
+                            f"- **💼 {labels['has_position_label']}**: {pos_advice.get('has_position', labels['continue_holding'])}",
+                            "",
+                        ])
+                    else:
+                        report_lines.extend([
+                            f"| {labels['position_status_label']} | {labels['action_advice_label']} |",
+                            "|---------|---------|",
+                            f"| 🆕 **{labels['no_position_label']}** | {pos_advice.get('no_position', localize_operation_advice(result.operation_advice, report_language))} |",
+                            f"| 💼 **{labels['has_position_label']}** | {pos_advice.get('has_position', labels['continue_holding'])} |",
+                            "",
+                        ])
 
                 self._append_market_snapshot(report_lines, result)
 
@@ -1864,17 +1888,34 @@ class NotificationService(
         # 狙击点位
         sniper = battle.get('sniper_points', {}) if battle else {}
         if sniper:
-            lines.extend([
-                f"### 🎯 {labels['action_points_heading']}",
-                "",
-                f"| {labels['ideal_buy_label']} | {labels['stop_loss_label']} | {labels['take_profit_label']} |",
-                "|------|------|------|",
-            ])
-            ideal_buy = sniper.get('ideal_buy', '-')
-            stop_loss = sniper.get('stop_loss', '-')
-            take_profit = sniper.get('take_profit', '-')
-            lines.append(f"| {ideal_buy} | {stop_loss} | {take_profit} |")
-            lines.append("")
+            if getattr(self._config, "report_vertical_tables", False):
+                vertical_lines = []
+                if sniper.get('ideal_buy') and sniper.get('ideal_buy') != '-':
+                    vertical_lines.append(f"- **{labels['ideal_buy_label']}**: {sniper.get('ideal_buy')}")
+                if sniper.get('stop_loss') and sniper.get('stop_loss') != '-':
+                    vertical_lines.append(f"- **{labels['stop_loss_label']}**: {sniper.get('stop_loss')}")
+                if sniper.get('take_profit') and sniper.get('take_profit') != '-':
+                    vertical_lines.append(f"- **{labels['take_profit_label']}**: {sniper.get('take_profit')}")
+
+                if vertical_lines:
+                    lines.extend([
+                        f"### 🎯 {labels['action_points_heading']}",
+                        "",
+                        *vertical_lines,
+                        "",
+                    ])
+            else:
+                lines.extend([
+                    f"### 🎯 {labels['action_points_heading']}",
+                    "",
+                    f"| {labels['ideal_buy_label']} | {labels['stop_loss_label']} | {labels['take_profit_label']} |",
+                    "|------|------|------|",
+                ])
+                ideal_buy = sniper.get('ideal_buy', '-')
+                stop_loss = sniper.get('stop_loss', '-')
+                take_profit = sniper.get('take_profit', '-')
+                lines.append(f"| {ideal_buy} | {stop_loss} | {take_profit} |")
+                lines.append("")
 
         # ========== 信号归因分析 ==========
         signal_attr = dashboard.get('signal_attribution', {}) if dashboard else {}
@@ -1958,6 +1999,41 @@ class NotificationService(
 
         report_language = self._get_report_language(result)
         labels = get_report_labels(report_language)
+
+        if getattr(self._config, "report_vertical_tables", False):
+            vertical_lines = []
+
+            def add_line(label_key, val):
+                if val not in (None, "", "N/A"):
+                    vertical_lines.append(f"- **{labels[label_key]}**: {val}")
+
+            add_line('close_label', snapshot.get('close'))
+            add_line('prev_close_label', snapshot.get('prev_close'))
+            add_line('open_label', snapshot.get('open'))
+            add_line('high_label', snapshot.get('high'))
+            add_line('low_label', snapshot.get('low'))
+            add_line('change_pct_label', snapshot.get('pct_chg'))
+            add_line('change_amount_label', snapshot.get('change_amount'))
+            add_line('amplitude_label', snapshot.get('amplitude'))
+            add_line('volume_label', snapshot.get('volume'))
+            add_line('amount_label', snapshot.get('amount'))
+
+            if "price" in snapshot:
+                display_source = self._get_source_display_name(snapshot.get('source', 'N/A'), report_language)
+                add_line('current_price_label', snapshot.get('price'))
+                add_line('volume_ratio_label', snapshot.get('volume_ratio'))
+                add_line('turnover_rate_label', snapshot.get('turnover_rate'))
+                if display_source not in (None, "", "N/A"):
+                    vertical_lines.append(f"- **{labels['source_label']}**: {display_source}")
+
+            if vertical_lines:
+                lines.extend([
+                    f"### 📈 {labels['market_snapshot_heading']}",
+                    "",
+                    *vertical_lines,
+                    "",
+                ])
+            return
 
         lines.extend([
             f"### 📈 {labels['market_snapshot_heading']}",

@@ -1091,7 +1091,57 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         """构建指数行情表格"""
         if not overview.indices:
             return ""
-        if self._get_review_language() == "en":
+
+        language = self._get_review_language()
+        index_translations = {
+            "上证指数": "SSE Index",
+            "深证成指": "SZSE Component",
+            "创业板指": "ChiNext Index",
+            "科创50": "STAR 50",
+            "上证50": "SSE 50",
+            "沪深300": "CSI 300",
+        }
+
+        if getattr(self.config, "report_vertical_tables", False):
+            lines = []
+            for idx in overview.indices:
+                name = index_translations.get(idx.name, idx.name) if language == "en" else idx.name
+                arrow = self._get_index_change_arrow(idx.change_pct)
+                amount_raw = idx.amount or 0.0
+                amount_str = self._format_turnover_value(amount_raw)
+
+                if language == "en":
+                    lines.append(f"**{name}**:")
+                    lines.append(f"  - Last: {idx.current:.2f}")
+                    lines.append(f"  - Change %: {arrow} {idx.change_pct:+.2f}%")
+                    if idx.open is not None:
+                        lines.append(f"  - Open: {idx.open:.2f}")
+                    if idx.high is not None:
+                        lines.append(f"  - High: {idx.high:.2f}")
+                    if idx.low is not None:
+                        lines.append(f"  - Low: {idx.low:.2f}")
+                    if idx.amplitude is not None:
+                        lines.append(f"  - Amplitude: {idx.amplitude:.2f}%")
+                    if amount_str not in (None, "", "N/A", "0.00"):
+                        lines.append(f"  - Turnover: {amount_str}")
+                else:
+                    lines.append(f"**{name}**:")
+                    lines.append(f"  - 最新: {idx.current:.2f}")
+                    lines.append(f"  - 涨跌幅: {arrow} {idx.change_pct:+.2f}%")
+                    if idx.open is not None:
+                        lines.append(f"  - 开盘: {idx.open:.2f}")
+                    if idx.high is not None:
+                        lines.append(f"  - 最高: {idx.high:.2f}")
+                    if idx.low is not None:
+                        lines.append(f"  - 最低: {idx.low:.2f}")
+                    if idx.amplitude is not None:
+                        lines.append(f"  - 振幅: {idx.amplitude:.2f}%")
+                    if amount_str not in (None, "", "N/A", "0.00"):
+                        lines.append(f"  - 成交额: {amount_str}")
+                lines.append("")
+            return "\n".join(lines)
+
+        if language == "en":
             lines = [
                 f"| Index | Last | Change % | Open | High | Low | Amplitude | Turnover ({self._get_turnover_unit_label()}) |",
                 "|-------|------|----------|------|------|-----|-----------|-----------------|",
@@ -1102,11 +1152,12 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
                 "|------|------|--------|------|------|------|------|-----------|",
             ]
         for idx in overview.indices:
+            name = index_translations.get(idx.name, idx.name) if language == "en" else idx.name
             arrow = self._get_index_change_arrow(idx.change_pct)
             amount_raw = idx.amount or 0.0
             amount_str = self._format_turnover_value(amount_raw)
             lines.append(
-                f"| {idx.name} | {idx.current:.2f} | {arrow} {idx.change_pct:+.2f}% | "
+                f"| {name} | {idx.current:.2f} | {arrow} {idx.change_pct:+.2f}% | "
                 f"{self._format_optional_number(idx.open)} | {self._format_optional_number(idx.high)} | "
                 f"{self._format_optional_number(idx.low)} | {self._format_optional_pct(idx.amplitude)} | {amount_str} |"
             )
@@ -1124,20 +1175,98 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         lines = []
         language = self._get_review_language()
 
+        sector_translations = {
+            "软件和信息技术服务业": "Software & IT Services",
+            "石油加工、炼焦和核燃料加工业": "Oil Processing & Coking",
+            "开采辅助活动": "Mining Support Services",
+            "房屋建筑业": "Building Construction",
+            "文化艺术业": "Culture & Art",
+            "家具制造业": "Furniture Manufacturing",
+            "非金属矿采选业": "Non-metal Mining",
+            "橡胶 and 塑料制品业": "Rubber & Plastics",
+            "橡胶和塑料制品业": "Rubber & Plastics",
+            "通用设备制造业": "General Equipment Manufacturing",
+            "租赁业": "Leasing Industry",
+            "专用设备制造业": "Special Equipment Manufacturing",
+            "计算机、通信和其他电子设备制造业": "Computers & Electronics",
+            "电气机械和器材制造业": "Electrical Machinery",
+            "化学原料和化学制品制造业": "Chemical Raw Materials",
+            "医药制造业": "Pharmaceutical Manufacturing",
+            "汽车制造业": "Automotive Manufacturing",
+            "有色金属冶炼和压延加工业": "Non-ferrous Metal Smelting",
+            "黑色金属冶炼和压延加工业": "Ferrous Metal Smelting",
+            "煤炭开采和洗选业": "Coal Mining & Washing",
+            "石油和天然气开采业": "Oil & Gas Extraction",
+            "酒、饮料和精制茶制造业": "Beverages & Alcohol",
+            "食品制造业": "Food Manufacturing",
+            "农副食品加工业": "Agri-food Processing",
+            "纺织业": "Textile Industry",
+            "服装、服饰业": "Apparel & Clothing",
+            "皮革、毛皮、羽毛及其制品和制鞋业": "Leather, Fur & Footwear",
+            "木材加工和木、竹、藤、棕、草制品业": "Wood Processing",
+            "纸和纸制品业": "Paper Products",
+            "印刷和记录媒介复制业": "Printing & Media Replication",
+            "文教、工美、体育和娱乐用品制造业": "Educational & Sports Goods",
+            "化学纤维制造业": "Chemical Fiber Manufacturing",
+            "非金属矿物制品业": "Non-metallic Mineral Products",
+            "金属制品业": "Metal Products",
+            "铁路、船舶、航空航天和其他运输设备制造业": "Transportation Equipment",
+            "仪器仪表制造业": "Instruments & Apparatuses",
+            "其他制造业": "Other Manufacturing",
+            "废弃资源综合利用业": "Waste Resource Utilization",
+            "金属制品、机械和设备修理业": "Equipment Repair",
+            "电力、热力生产和供应业": "Electricity & Heat Supply",
+            "燃气生产和供应业": "Gas Production & Supply",
+            "水的生产和供应业": "Water Production & Supply",
+            "土木工程建筑业": "Civil Engineering Construction",
+            "建筑安装业": "Building Installation",
+            "建筑装饰、装修和其他建筑业": "Building Decoration & Construction",
+            "批发业": "Wholesale Trade",
+            "零售业": "Retail Trade",
+            "铁路运输业": "Railway Transportation",
+            "道路运输业": "Road Transportation",
+            "水上运输业": "Water Transportation",
+            "航空运输业": "Air Transportation",
+            "管道运输业": "Pipeline Transportation",
+            "装卸搬运和仓储业": "Warehousing & Storage",
+            "邮政业": "Postal & Express Services",
+            "住宿业": "Accommodation Industry",
+            "餐饮业": "Catering Industry",
+            "电信、广播电视和卫星传输服务": "Telecom, Broadcasting & Satellite",
+            "互联网和相关服务": "Internet & Related Services",
+            "金融业": "Financial Industry",
+            "货币金融服务": "Monetary Financial Services",
+            "资本市场服务": "Capital Market Services",
+            "保险业": "Insurance Industry",
+            "其他金融业": "Other Financial Services",
+            "房地产业": "Real Estate",
+            "科技推广和应用服务业": "Technology Promotion Services",
+            "软件和信息技术服务": "Software & IT Services",
+        }
+
         def append_ranking(title: str, name_label: str, rows: List[Dict]) -> None:
             if not rows:
                 return
             if lines:
                 lines.append("")
-            lines.extend([
-                title,
-                f"| {'Rank' if language == 'en' else '排名'} | {name_label} | {'Change' if language == 'en' else '涨跌幅'} |",
-                "|------|------|--------|",
-            ])
-            for rank, item in enumerate(rows[:5], 1):
-                lines.append(
-                    f"| {rank} | {item.get('name', '-')} | {self._format_signed_pct(item.get('change_pct'))} |"
-                )
+            lines.append(title)
+
+            if getattr(self.config, "report_vertical_tables", False):
+                for rank, item in enumerate(rows[:5], 1):
+                    raw_name = item.get('name', '-')
+                    name = sector_translations.get(raw_name, raw_name) if language == "en" else raw_name
+                    lines.append(f"- **{rank}. {name}**: {self._format_signed_pct(item.get('change_pct'))}")
+            else:
+                lines.extend([
+                    f"| {'Rank' if language == 'en' else '排名'} | {name_label} | {'Change' if language == 'en' else '涨跌幅'} |",
+                    "|------|------|--------|",
+                ])
+                for rank, item in enumerate(rows[:5], 1):
+                    raw_name = item.get('name', '-')
+                    name = sector_translations.get(raw_name, raw_name) if language == "en" else raw_name
+                    lines.append(
+                        f"| {rank} | {name} | {self._format_signed_pct(item.get('change_pct'))} |"
+                    )
 
         if language == "en":
             append_ranking("#### Leading Industry Sectors", "Sector", overview.top_sectors)
