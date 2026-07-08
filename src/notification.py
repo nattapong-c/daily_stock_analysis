@@ -2140,6 +2140,34 @@ class NotificationService(
         if all(v == "N/A" for v in cells.values()):
             return
 
+        if getattr(self._config, "report_vertical_tables", False):
+            vertical_lines = []
+            if cells["report_date"] != "N/A":
+                vertical_lines.append(f"- **{labels['report_date_label']}**: {cells['report_date']}")
+            if cells["revenue"] != "N/A":
+                vertical_lines.append(f"- **{labels['revenue_label']}**: {cells['revenue']}")
+            if cells["revenue_yoy"] != "N/A":
+                vertical_lines.append(f"- **{labels['revenue_yoy_label']}**: {cells['revenue_yoy']}")
+            if cells["net_profit"] != "N/A":
+                vertical_lines.append(f"- **{labels['net_profit_label']}**: {cells['net_profit']}")
+            if cells["net_profit_yoy"] != "N/A":
+                vertical_lines.append(f"- **{labels['net_profit_yoy_label']}**: {cells['net_profit_yoy']}")
+            if cells["operating_cash_flow"] != "N/A":
+                vertical_lines.append(f"- **{labels['operating_cash_flow_label']}**: {cells['operating_cash_flow']}")
+            if cells["roe"] != "N/A":
+                vertical_lines.append(f"- **{labels['roe_label']}**: {cells['roe']}")
+            if cells["gross_margin"] != "N/A":
+                vertical_lines.append(f"- **{labels['gross_margin_label']}**: {cells['gross_margin']}")
+
+            if vertical_lines:
+                lines.extend([
+                    f"### 💼 {labels['financial_summary_heading']}",
+                    "",
+                    *vertical_lines,
+                    "",
+                ])
+            return
+
         lines.extend([
             f"### 💼 {labels['financial_summary_heading']}",
             "",
@@ -2186,6 +2214,26 @@ class NotificationService(
             "latest_ex": self._format_text(latest_event.get("ex_dividend_date") or latest_event.get("event_date")),
         }
         if all(v == "N/A" for v in cells.values()):
+            return
+
+        if getattr(self._config, "report_vertical_tables", False):
+            vertical_lines = []
+            if cells["ttm_cash"] != "N/A":
+                vertical_lines.append(f"- **{labels['ttm_cash_dividend_label']}**: {cells['ttm_cash']}")
+            if cells["ttm_count"] != "N/A":
+                vertical_lines.append(f"- **{labels['ttm_event_count_label']}**: {cells['ttm_count']}")
+            if cells["ttm_yield"] != "N/A":
+                vertical_lines.append(f"- **{labels['ttm_dividend_yield_label']}**: {cells['ttm_yield']}")
+            if cells["latest_ex"] != "N/A":
+                vertical_lines.append(f"- **{labels['latest_ex_dividend_label']}**: {cells['latest_ex']}")
+
+            if vertical_lines:
+                lines.extend([
+                    f"### 💵 {labels['shareholder_return_heading']}",
+                    "",
+                    *vertical_lines,
+                    "",
+                ])
             return
 
         lines.extend([
@@ -2248,6 +2296,29 @@ class NotificationService(
             return
         date = self._format_text(inst.get("date"))
         source = self._format_text(inst.get("source"))
+
+        if getattr(self._config, "report_vertical_tables", False):
+            vertical_lines = []
+            if cells["foreign"] != "N/A":
+                vertical_lines.append(f"- **{labels['inst_foreign_label']}**: {cells['foreign']}")
+            if cells["trust"] != "N/A":
+                vertical_lines.append(f"- **{labels['inst_trust_label']}**: {cells['trust']}")
+            if cells["dealer"] != "N/A":
+                vertical_lines.append(f"- **{labels['inst_dealer_label']}**: {cells['dealer']}")
+            if cells["total"] != "N/A":
+                vertical_lines.append(f"- **{labels['inst_total_label']}**: {cells['total']}")
+
+            if vertical_lines:
+                lines.extend([
+                    f"### 📊 {labels['institutional_flow_heading']}（{date} · {source}）",
+                    "",
+                    f"> {labels['institutional_flow_note']}",
+                    "",
+                    *vertical_lines,
+                    "",
+                ])
+            return
+
         lines.extend([
             f"### 📊 {labels['institutional_flow_heading']}（{date} · {source}）",
             "",
