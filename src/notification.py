@@ -1833,8 +1833,6 @@ class NotificationService(
         if signal_excerpt:
             lines.extend([signal_excerpt, ""])
 
-        self._append_market_snapshot(lines, result)
-
         # 核心决策（一句话）
         one_sentence = core.get('one_sentence', result.analysis_summary) if core else result.analysis_summary
         if one_sentence:
